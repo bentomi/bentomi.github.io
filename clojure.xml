@@ -1,0 +1,156 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<rss version='2.0' xmlns:atom='http://www.w3.org/2005/Atom'>
+<channel>
+<atom:link href='https://bentomi.github.com/' rel='self' type='application/rss+xml'/>
+<title>
+Bentomi's Notepad
+</title>
+<link>
+https://bentomi.github.com/
+</link>
+<description>
+Notes made during my experiments
+</description>
+<lastBuildDate>
+Wed, 05 Jul 2017 23:51:06 +0200
+</lastBuildDate>
+<generator>
+clj-rss
+</generator>
+<item>
+<guid>
+https://bentomi.github.com/posts-output/2017-06-04-message-sending-clojure-elixir/
+</guid>
+<link>
+https://bentomi.github.com/posts-output/2017-06-04-message-sending-clojure-elixir/
+</link>
+<title>
+Message sending with Clojure agents, core.async and Elixir
+</title>
+<description>
+&lt;h2 id=&quot;the&amp;#95;&quot;messages&amp;#95;sent&amp;#95;through&amp;#95;a&amp;#95;chain&quot;&amp;#95;problem&quot;&gt;The &quot;messages sent through a chain&quot; problem&lt;/h2&gt;&lt;p&gt;This is an often used toy problem to benchmark the message passing overhead in asynchronous message passing systems.  We create M number of processes/agents in a chain and send N messages through the whole chain.&lt;/p&gt;&lt;p&gt;I looked at three different implementations of the benchmark, an Elixir version serving as the baseline and two Clojure versions, one with agents and one with core.async.  Here are the basic versions of each.&lt;/p&gt;&lt;h2 id=&quot;elixir&amp;#95;solution&quot;&gt;Elixir solution&lt;/h2&gt;&lt;pre&gt;&lt;code&gt;defmodule Chain do
+  def relay&amp;#40;next&amp;#95;pid&amp;#41; do
+    receive do
+      message -&amp;gt;
+        send next&amp;#95;pid, message
+        relay&amp;#40;next&amp;#95;pid&amp;#41;
+    end
+  end
+
+  def create&amp;#95;senders&amp;#40;m&amp;#41; do
+    Enum.reduce 1..m, self&amp;#40;&amp;#41;, fn &amp;#40;&amp;#95;, prev&amp;#41; -&amp;gt; spawn&amp;#40;Chain, :relay, &amp;#91;prev&amp;#93;&amp;#41; end
+  end
+
+  def test&amp;#40;m, n&amp;#41; do
+    message = 0
+    start = create&amp;#95;senders&amp;#40;m&amp;#41;
+    Enum.each 1..n, fn &amp;#40;&amp;#95;&amp;#41; -&amp;gt; send start, message end
+    Enum.each 1..n, fn &amp;#40;&amp;#95;&amp;#41; -&amp;gt; receive do x -&amp;gt; x end end
+  end
+
+  def run&amp;#40;m, n&amp;#41; do
+    IO.puts inspect :timer.tc&amp;#40;Chain, :test, &amp;#91;m, n&amp;#93;&amp;#41;
+  end
+end
+&lt;/code&gt;&lt;/pre&gt;&lt;p&gt;The &lt;code&gt;test&lt;/code&gt; function creates &lt;code&gt;m&lt;/code&gt; Erlang processes each running in a loop receiving messages and sending them on to the next process (the last process receiving the message is the main process itself).  Then it asynchronously sends &lt;code&gt;n&lt;/code&gt; messages to the &lt;code&gt;start&lt;/code&gt; process, and finally it waits for all &lt;code&gt;n&lt;/code&gt; messages to arrive back.&lt;/p&gt;&lt;p&gt;The test with 10000 processes sending around 10000 messages can be executed by running the following command:&lt;/p&gt;&lt;pre&gt;&lt;code&gt;elixir --erl &amp;quot;+P 10000&amp;quot; -r chain.exs -e &amp;quot;Chain.run&amp;#40;10000, 10000&amp;#41;&amp;quot;
+&lt;/code&gt;&lt;/pre&gt;&lt;p&gt;On my matching it prints &lt;code&gt;{5877968, :ok}&lt;/code&gt;, meaning that everything went well and the test took about 5.9 seconds.  During this time, all CPU cores had 100% load.&lt;/p&gt;&lt;h2 id=&quot;clojure&amp;#95;agents&amp;#95;solution&quot;&gt;Clojure agents solution&lt;/h2&gt;&lt;pre&gt;&lt;code&gt;&amp;#40;ns chain.agents
+  &amp;#40;:import &amp;#91;java.util.concurrent SynchronousQueue&amp;#93;&amp;#41;&amp;#41;
+
+&amp;#40;defn relay &amp;#91;s m&amp;#93;
+  &amp;#40;if &amp;#40;instance? clojure.lang.Agent s&amp;#41;
+    &amp;#40;send s relay m&amp;#41;
+    &amp;#40;.put &amp;#94;SynchronousQueue s m&amp;#41;&amp;#41;
+  s&amp;#41;
+
+&amp;#40;defn create-senders &amp;#91;m start&amp;#93;
+  &amp;#40;reduce &amp;#40;fn &amp;#91;next &amp;#95;&amp;#93; &amp;#40;agent next&amp;#41;&amp;#41; start &amp;#40;range &amp;#40;dec m&amp;#41;&amp;#41;&amp;#41;&amp;#41;
+
+&amp;#40;defn run &amp;#91;m n&amp;#93;
+  &amp;#40;let &amp;#91;message 0
+        q &amp;#40;SynchronousQueue.&amp;#41;
+        start &amp;#40;create-senders m &amp;#40;agent q&amp;#41;&amp;#41;&amp;#93;
+    &amp;#40;dotimes &amp;#91;&amp;#95; n&amp;#93;
+      &amp;#40;send start relay message&amp;#41;&amp;#41;
+    &amp;#40;dotimes &amp;#91;&amp;#95; n&amp;#93;
+      &amp;#40;.take q&amp;#41;&amp;#41;&amp;#41;&amp;#41;
+
+&amp;#40;defn -main &amp;#91;m n&amp;#93;
+  &amp;#40;time &amp;#40;run &amp;#40;Integer/parseInt m&amp;#41; &amp;#40;Integer/parseInt n&amp;#41;&amp;#41;&amp;#41;
+  &amp;#40;shutdown-agents&amp;#41;&amp;#41;
+&lt;/code&gt;&lt;/pre&gt;&lt;p&gt;Here we create &lt;code&gt;m&lt;/code&gt; agents linked to each other, except that the first agent gets a queue as its state.  Then, just like in the Elixir version, &lt;code&gt;n&lt;/code&gt; messages are sent asynchronously to the start agent and finally the main thread takes the messages from the queue.&lt;/p&gt;&lt;p&gt;After running &lt;code&gt;lein uberjar&lt;/code&gt;, the program can be executed with&lt;/p&gt;&lt;pre&gt;&lt;code&gt;java -cp target/chain-standalone.jar clojure.main -m chain.agents 10000 10000
+&lt;/code&gt;&lt;/pre&gt;&lt;p&gt;and prints &lt;code&gt;&amp;quot;Elapsed time: 89672.860248 msecs&amp;quot;&lt;/code&gt;.  The first thing that leaps to the eye is that this is about 15 times slower than the Elixir version.  The second thing is that the CPU usage is about 20% on all cores.  The latter suggest, that we might have some problems with scheduling the work, so let's tune that a bit.&lt;/p&gt;&lt;h3 id=&quot;tuning&amp;#95;agent&amp;#95;action&amp;#95;scheduling&quot;&gt;Tuning agent action scheduling&lt;/h3&gt;&lt;p&gt;The &lt;code&gt;send&lt;/code&gt; function dispatches actions to the agents using a Java fixed thread pool executor with pool size set to the number of available (logical) processors plus two.  This default executor can be overwritten by the &lt;code&gt;set-agent-send-executor!&lt;/code&gt; function.  By changing &lt;code&gt;-main&lt;/code&gt; we can experiment with various pool sizes:&lt;/p&gt;&lt;pre&gt;&lt;code&gt;&amp;#40;ns chain.agents
+  &amp;#40;:import &amp;#91;java.util.concurrent SynchronousQueue Executors&amp;#93;&amp;#41;&amp;#41;
+
+;; functions before -main unchanged
+
+&amp;#40;defn -main &amp;#91;p m n&amp;#93;
+  &amp;#40;set-agent-send-executor! &amp;#40;Executors/newFixedThreadPool &amp;#40;Integer/parseInt p&amp;#41;&amp;#41;&amp;#41;
+  &amp;#40;time &amp;#40;run &amp;#40;Integer/parseInt m&amp;#41; &amp;#40;Integer/parseInt n&amp;#41;&amp;#41;&amp;#41;
+  &amp;#40;shutdown-agents&amp;#41;&amp;#41;
+&lt;/code&gt;&lt;/pre&gt;&lt;p&gt;It turns out, that on my machine with eight logical processors the program runs fastest with three threads in the thread pool: &lt;code&gt;&amp;quot;Elapsed time: 61878.63678 msecs&amp;quot;&lt;/code&gt;.  This clearly indicates that more threads just hinder each other in doing useful work.&lt;/p&gt;&lt;p&gt;It is a bit annoying that we cannot use all processors, but fortunately, since Java 1.8 the concurrency framework provides a work stealing pool which works in a way very similar to the Erlang scheduler.&lt;/p&gt;&lt;pre&gt;&lt;code&gt;;; everything before -main unchanged
+
+&amp;#40;defn -main &amp;#91;m n&amp;#93;
+  &amp;#40;set-agent-send-executor! &amp;#40;Executors/newWorkStealingPool&amp;#41;&amp;#41;
+  &amp;#40;time &amp;#40;run &amp;#40;Integer/parseInt m&amp;#41; &amp;#40;Integer/parseInt n&amp;#41;&amp;#41;&amp;#41;
+  &amp;#40;shutdown-agents&amp;#41;&amp;#41;
+&lt;/code&gt;&lt;/pre&gt;&lt;p&gt;This version prints &lt;code&gt;&amp;quot;Elapsed time: 35880.203266 msecs&amp;quot;&lt;/code&gt; and produces 100% CPU usage.  It seems, scheduling is not the bottleneck anymore. How does the work stealing pool do this?&lt;/p&gt;&lt;p&gt;The main difference between the work stealing and the fixed thread pool is, that the latter has a single queue of tasks from which the worker threads can take tasks, and where new tasks can be put.  At high levels of parallelism this results in contention.  The work stealing pool uses several queues which are dedicated to threads and when a thread produces work, it is put the queue of thread.  Only when the queue of a thread is empty does the thread go to see if it can steal tasks from the queue of another thread.  This means, that as long as the threads produce enough work for themselves (which the agents in our example do), there will be no contention and no waiting at all.&lt;/p&gt;&lt;p&gt;This is all very nice, but the Clojure agents are still about seven times slower than the Elixir/Erlang processes.  Looking at the hot spots in Java VisualVM reveals that the function &lt;code&gt;push-thread-bindings&lt;/code&gt; used for binding the dynamic &lt;code&gt;&amp;#42;agent&amp;#42;&lt;/code&gt; variable to the agent we are sending work to is responsible for about 20% of the runtime.  Let's have a look at a solution that doesn't have this overhead.&lt;/p&gt;&lt;h2 id=&quot;clojure&amp;#95;core.async&amp;#95;solution&quot;&gt;Clojure core.async solution&lt;/h2&gt;&lt;p&gt;In this solution we use core.async go blocks to represent relays.&lt;/p&gt;&lt;pre&gt;&lt;code&gt;&amp;#40;ns chain.async
+  &amp;#40;:require &amp;#91;clojure.core.async :as async :refer &amp;#91;&amp;lt;! &amp;gt;! &amp;lt;!!&amp;#93;&amp;#93;&amp;#41;&amp;#41;
+
+&amp;#40;defn relay &amp;#91;in out&amp;#93;
+  &amp;#40;async/go-loop &amp;#91;&amp;#93;
+    &amp;#40;&amp;gt;! out &amp;#40;&amp;lt;! in&amp;#41;&amp;#41;
+    &amp;#40;recur&amp;#41;&amp;#41;&amp;#41;
+
+&amp;#40;defn create-senders &amp;#91;m start&amp;#93;
+  &amp;#40;reduce &amp;#40;fn &amp;#91;in &amp;#95;&amp;#93; &amp;#40;let &amp;#91;out &amp;#40;async/chan&amp;#41;&amp;#93; &amp;#40;relay in out&amp;#41; out&amp;#41;&amp;#41;
+          start &amp;#40;range m&amp;#41;&amp;#41;&amp;#41;
+
+&amp;#40;defn run &amp;#91;m n&amp;#93;
+  &amp;#40;let &amp;#91;message 0
+        start &amp;#40;async/chan&amp;#41;
+        end &amp;#40;create-senders m start&amp;#41;&amp;#93;
+    &amp;#40;async/go
+      &amp;#40;dotimes &amp;#91;&amp;#95; n&amp;#93;
+        &amp;#40;&amp;gt;! start message&amp;#41;&amp;#41;&amp;#41;
+    &amp;#40;dotimes &amp;#91;&amp;#95; n&amp;#93;
+      &amp;#40;&amp;lt;!! end&amp;#41;&amp;#41;&amp;#41;&amp;#41;
+
+&amp;#40;defn -main &amp;#91;m n&amp;#93;
+  &amp;#40;time &amp;#40;run &amp;#40;Integer/parseInt m&amp;#41; &amp;#40;Integer/parseInt n&amp;#41;&amp;#41;&amp;#41;&amp;#41;
+&lt;/code&gt;&lt;/pre&gt;&lt;p&gt;The structure of the program is the same as before, but here we have to generate channels to be able to communicate between processes. Executing this program with&lt;/p&gt;&lt;pre&gt;&lt;code&gt;java -cp target/chain-standalone.jar clojure.main -m chain.async 10000 10000
+&lt;/code&gt;&lt;/pre&gt;&lt;p&gt;we get &lt;code&gt;Elapsed time: 81157.570264 msecs&amp;quot;&lt;/code&gt; and 40% CPU usage on all cores.&lt;/p&gt;&lt;p&gt;We seem to have a scheduling problem again.  But before looking for ways to override the executor again (which is not supported out of the box, see &lt;a href='https://dev.clojure.org/jira/browse/ASYNC-94'&gt;ASYNC-94&lt;/a&gt;) let's compare this solution and the Elixir one.&lt;/p&gt;&lt;p&gt;Both solutions create processes for relaying the messages, but only the Elixir solution is truly asynchronous.  In Elixir, each process has a mailbox where the messages sent to it land and the sender doesn't wait until the addressee pulls the message.  In the core.async solution the processes have to synchronise, as the channels have no buffers.  Let's see what happens if we decouple the processes a bit.&lt;/p&gt;&lt;h3 id=&quot;tuning&amp;#95;core.async&amp;#95;buffering&quot;&gt;Tuning core.async buffering&lt;/h3&gt;&lt;pre&gt;&lt;code&gt;&amp;#40;defn create-senders &amp;#91;m start&amp;#93;
+  &amp;#40;reduce &amp;#40;fn &amp;#91;in &amp;#95;&amp;#93; &amp;#40;let &amp;#91;out &amp;#40;async/chan 1000&amp;#41;&amp;#93; &amp;#40;relay in out&amp;#41; out&amp;#41;&amp;#41;
+          start &amp;#40;range m&amp;#41;&amp;#41;&amp;#41;
+
+&amp;#40;defn run &amp;#91;m n&amp;#93;
+  &amp;#40;let &amp;#91;message 0
+        start &amp;#40;async/chan 1000&amp;#41;
+        end &amp;#40;create-senders m start&amp;#41;&amp;#93;
+    &amp;#40;async/go
+      &amp;#40;dotimes &amp;#91;&amp;#95; n&amp;#93;
+        &amp;#40;&amp;gt;! start message&amp;#41;&amp;#41;&amp;#41;
+    &amp;#40;dotimes &amp;#91;&amp;#95; n&amp;#93;
+      &amp;#40;&amp;lt;!! end&amp;#41;&amp;#41;&amp;#41;&amp;#41;
+&lt;/code&gt;&lt;/pre&gt;&lt;p&gt;Now a go block can send 1000 messages without waiting for the other end to handle them.  When executed, the program prints &lt;code&gt;Elapsed time: 7157.570264 msecs&amp;quot;&lt;/code&gt; and the CPU usage goes up to 100% on all cores.  This is comparable to the Elixir version. Also, the VisualVM sampler shows that the time is spent in the put and take operations, which is as expected.&lt;/p&gt;&lt;h2 id=&quot;bigger&amp;#95;messages&quot;&gt;Bigger messages&lt;/h2&gt;&lt;p&gt;One aspect of this benchmark that's quite artificial is that the messages are small integers.  Let's see what happens if instead of &lt;code&gt;0&lt;/code&gt; we send around a list of twenty integers.  This is how the Elixir version looks like:&lt;/p&gt;&lt;pre&gt;&lt;code&gt;  def test&amp;#40;m, n&amp;#41; do
+    message = Enum.to&amp;#95;list 1..20 # &amp;lt;- this is the only change
+    start = create&amp;#95;senders&amp;#40;m&amp;#41;
+    Enum.each 1..n, fn &amp;#40;&amp;#95;&amp;#41; -&amp;gt; send start, message end
+    Enum.each 1..n, fn &amp;#40;&amp;#95;&amp;#41; -&amp;gt; receive do x -&amp;gt; x end end
+  end
+&lt;/code&gt;&lt;/pre&gt;&lt;p&gt;And this is the equivalent change for the core.async version:&lt;/p&gt;&lt;pre&gt;&lt;code&gt;&amp;#40;defn run &amp;#91;m n&amp;#93;
+  &amp;#40;let &amp;#91;message &amp;#40;into &amp;#40;&amp;#41; &amp;#40;range 20&amp;#41;&amp;#41; ; &amp;lt;- this is the only change
+        start &amp;#40;async/chan 1000&amp;#41;
+        end &amp;#40;create-senders m start&amp;#41;&amp;#93;
+    &amp;#40;async/go
+      &amp;#40;dotimes &amp;#91;&amp;#95; n&amp;#93;
+        &amp;#40;&amp;gt;! start message&amp;#41;&amp;#41;&amp;#41;
+    &amp;#40;dotimes &amp;#91;&amp;#95; n&amp;#93;
+      &amp;#40;&amp;lt;!! end&amp;#41;&amp;#41;&amp;#41;&amp;#41;
+&lt;/code&gt;&lt;/pre&gt;&lt;p&gt;This change more than doubles the runtime of the Elixir version: &lt;code&gt;{16641097, :ok}&lt;/code&gt;, while the runtime of the Clojure versions remains roughly unchanged: &lt;code&gt;&amp;quot;Elapsed time: 9755.010961 msecs&amp;quot;&lt;/code&gt;. This is because Erlang processes share nothing, and the message is copied each time it is sent.  In Clojure there is a global heap, so only a reference to the list has to be sent around.  Why does the Erlang virtual machine do this copying?  After all, Erlang lists are immutable so sharing them should not be dangerous.  The reason is that not sharing data enables the Erlang VM to maintain separate heaps for the individual processes which means these heaps stay small and can be garbage collected separately.  This in turn results in much shorter and more predictable GC related latencies.&lt;/p&gt;&lt;h2 id=&quot;conclusion&quot;&gt;Conclusion&lt;/h2&gt;&lt;p&gt;I compared asynchronous message passing performance of Elixir and Clojure, in Clojure I looked at both agents and core.async.  I discussed issues related to scheduling, buffering and garbage collection.  The following points seem to be the most important takeaways:&lt;/p&gt;&lt;ol&gt;&lt;li&gt;The Erlang process scheduler and message passing system is an   impressive piece of work, and offers excellent out of the box   experience.&lt;/li&gt;&lt;li&gt;In Clojure, agents are not the way to go if message passing   performance is vital.&lt;/li&gt;&lt;li&gt;Clojure's core.async library offers similar message passing   performance as Erlang, especially if the messages are bigger than   just a couple of small numbers and buffering can be tweaked.&lt;/li&gt;&lt;li&gt;Erlang's GC probably causes smaller latencies than the default JVM   garbage collector.&lt;/li&gt;&lt;/ol&gt;&lt;p&gt;Feel free to experiment with the &lt;a href='https://github.com/bentomi/message-passing-test'&gt;code&lt;/a&gt; yourself.&lt;/p&gt;
+</description>
+<pubDate>
+Sun, 04 Jun 2017 00:00:00 +0200
+</pubDate>
+</item>
+</channel>
+</rss>
