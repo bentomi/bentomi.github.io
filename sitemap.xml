@@ -5,7 +5,7 @@
 https://bentomi.github.com/tags/index.html
 </loc>
 <lastmod>
-2017-07-05
+2017-07-10
 </lastmod>
 </url>
 <url>
@@ -13,7 +13,7 @@ https://bentomi.github.com/tags/index.html
 https://bentomi.github.com/tags-output/core.async/index.html
 </loc>
 <lastmod>
-2017-07-05
+2017-07-10
 </lastmod>
 </url>
 <url>
@@ -21,7 +21,15 @@ https://bentomi.github.com/tags-output/core.async/index.html
 https://bentomi.github.com/tags-output/message send/index.html
 </loc>
 <lastmod>
-2017-07-05
+2017-07-10
+</lastmod>
+</url>
+<url>
+<loc>
+https://bentomi.github.com/tags-output/channel/index.html
+</loc>
+<lastmod>
+2017-07-10
 </lastmod>
 </url>
 <url>
@@ -29,7 +37,7 @@ https://bentomi.github.com/tags-output/message send/index.html
 https://bentomi.github.com/tags-output/agents/index.html
 </loc>
 <lastmod>
-2017-07-05
+2017-07-10
 </lastmod>
 </url>
 <url>
@@ -37,7 +45,39 @@ https://bentomi.github.com/tags-output/agents/index.html
 https://bentomi.github.com/tags-output/process scheduling/index.html
 </loc>
 <lastmod>
-2017-07-05
+2017-07-10
+</lastmod>
+</url>
+<url>
+<loc>
+https://bentomi.github.com/tags-output/backpressure/index.html
+</loc>
+<lastmod>
+2017-07-10
+</lastmod>
+</url>
+<url>
+<loc>
+https://bentomi.github.com/tags-output/clojurescript/index.html
+</loc>
+<lastmod>
+2017-07-10
+</lastmod>
+</url>
+<url>
+<loc>
+https://bentomi.github.com/tags-output/nodejs/index.html
+</loc>
+<lastmod>
+2017-07-10
+</lastmod>
+</url>
+<url>
+<loc>
+https://bentomi.github.com/tags-output/readable stream/index.html
+</loc>
+<lastmod>
+2017-07-10
 </lastmod>
 </url>
 <url>
@@ -45,7 +85,7 @@ https://bentomi.github.com/tags-output/process scheduling/index.html
 https://bentomi.github.com/tags-output/elixir/index.html
 </loc>
 <lastmod>
-2017-07-05
+2017-07-10
 </lastmod>
 </url>
 <url>
@@ -53,7 +93,7 @@ https://bentomi.github.com/tags-output/elixir/index.html
 https://bentomi.github.com/tags-output/benchmark/index.html
 </loc>
 <lastmod>
-2017-07-05
+2017-07-10
 </lastmod>
 </url>
 <url>
@@ -61,7 +101,7 @@ https://bentomi.github.com/tags-output/benchmark/index.html
 https://bentomi.github.com/tags-output/clojure/index.html
 </loc>
 <lastmod>
-2017-07-05
+2017-07-10
 </lastmod>
 </url>
 <url>
@@ -69,7 +109,15 @@ https://bentomi.github.com/tags-output/clojure/index.html
 https://bentomi.github.com/index.html
 </loc>
 <lastmod>
-2017-07-05
+2017-07-10
+</lastmod>
+</url>
+<url>
+<loc>
+https://bentomi.github.com/posts-output/2017-06-09-readable-stream-to-channel/index.html
+</loc>
+<lastmod>
+2017-07-10
 </lastmod>
 </url>
 <url>
@@ -77,7 +125,7 @@ https://bentomi.github.com/index.html
 https://bentomi.github.com/posts-output/2017-06-04-message-sending-clojure-elixir/index.html
 </loc>
 <lastmod>
-2017-07-05
+2017-07-10
 </lastmod>
 </url>
 <url>
@@ -85,7 +133,7 @@ https://bentomi.github.com/posts-output/2017-06-04-message-sending-clojure-elixi
 https://bentomi.github.com/404.html
 </loc>
 <lastmod>
-2017-07-05
+2017-07-10
 </lastmod>
 </url>
 <url>
@@ -93,7 +141,7 @@ https://bentomi.github.com/404.html
 https://bentomi.github.com/authors-output/Bentomi/index.html
 </loc>
 <lastmod>
-2017-07-05
+2017-07-10
 </lastmod>
 </url>
 <url>
@@ -101,7 +149,7 @@ https://bentomi.github.com/authors-output/Bentomi/index.html
 https://bentomi.github.com/archives/index.html
 </loc>
 <lastmod>
-2017-07-05
+2017-07-10
 </lastmod>
 </url>
 </urlset>

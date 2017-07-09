@@ -12,11 +12,66 @@ https://bentomi.github.com/
 Notes made during my experiments
 </description>
 <lastBuildDate>
-Wed, 05 Jul 2017 23:51:06 +0200
+Mon, 10 Jul 2017 00:02:55 +0200
 </lastBuildDate>
 <generator>
 clj-rss
 </generator>
+<item>
+<guid>
+https://bentomi.github.com/posts-output/2017-06-09-readable-stream-to-channel/
+</guid>
+<link>
+https://bentomi.github.com/posts-output/2017-06-09-readable-stream-to-channel/
+</link>
+<title>
+Sending Node.js readable streams to core.async channels respecting backpressure
+</title>
+<description>
+&lt;h2 id=&quot;the&amp;#95;naive&amp;#95;solution&quot;&gt;The naive solution&lt;/h2&gt;&lt;p&gt;The simplest solution (also suggested by &lt;a href='https://stackoverflow.com/questions/39291779/idiomatic-conversion-of-node-js-apis-to-clojurescript'&gt;Stack Overflow&lt;/a&gt;) is the following:&lt;/p&gt;&lt;pre&gt;&lt;code&gt;&amp;#40;defn put-stream-unsafe! &amp;#91;rs ch&amp;#93;
+  &amp;#40;.on rs &amp;quot;data&amp;quot; #&amp;#40;async/put! ch %&amp;#41;&amp;#41;
+  &amp;#40;.on rs &amp;quot;end&amp;quot; #&amp;#40;async/close! ch&amp;#41;&amp;#41;&amp;#41;
+&lt;/code&gt;&lt;/pre&gt;&lt;p&gt;The function &lt;code&gt;put-stream-unsafe!&lt;/code&gt; takes a Node.js &lt;a href='https://nodejs.org/api/stream.html#stream_class_stream_readable'&gt;stream.Readable&lt;/a&gt; instance as &lt;code&gt;rs&lt;/code&gt; and a &lt;a href='https://github.com/clojure/core.async'&gt;core.async&lt;/a&gt; channel as &lt;code&gt;ch&lt;/code&gt; and puts the data chunks read onto the channel.&lt;/p&gt;&lt;p&gt;This works most of the time, except when the producer of the readable stream is faster than the consumer of the channel.  This is what happens in such a situation:&lt;/p&gt;&lt;pre&gt;&lt;code&gt;Error: Assert failed: No more than 1024 pending puts are allowed on a single channel. Consider using a windowed buffer.
+&amp;#40;&amp;lt; &amp;#40;.-length puts&amp;#41; impl/MAX-QUEUE-SIZE&amp;#41;
+&lt;/code&gt;&lt;/pre&gt;&lt;p&gt;The error says that we are trying to make the 1025th put on the channel without the channel being read.  We also get the advice to use a windowed buffer on the channel, but this is only a solution if we don't mind losing data.  If we do mind losing data, then we have to tell the producer to slow down enough so that the consumer can keep up.  One way a consumer can inform the producer that it has to slow down is to apply &lt;em&gt;backpressure&lt;/em&gt;.&lt;/p&gt;&lt;h2 id=&quot;applying&amp;#95;backpressure&amp;#95;on&amp;#95;readable&amp;#95;streams&quot;&gt;Applying backpressure on readable streams&lt;/h2&gt;&lt;p&gt;Node.js readable streams support backpressure via the &lt;code&gt;pause&lt;/code&gt; and &lt;code&gt;resume&lt;/code&gt; methods.  When &lt;code&gt;pause&lt;/code&gt; is called on a readable stream, it will not call emit &lt;code&gt;'data'&lt;/code&gt; events until &lt;code&gt;resume&lt;/code&gt; is called.  On the other side the core.async &lt;code&gt;put!&lt;/code&gt; function has a three argument version, where the last argument is a callback that's called when the data we put arrives on the channel.  Data can arrive either in the buffer of the channel (if there is free place there) or can be read by the consumer.  Armed with these functions, we can implement the safe version of the put stream function:&lt;/p&gt;&lt;pre&gt;&lt;code&gt;&amp;#40;defn put-stream! &amp;#91;rs ch&amp;#93;
+  &amp;#40;.on rs &amp;quot;data&amp;quot; &amp;#40;fn &amp;#91;data&amp;#93;
+                   &amp;#40;.pause rs&amp;#41;
+                   &amp;#40;async/put! ch data #&amp;#40;.resume rs&amp;#41;&amp;#41;&amp;#41;&amp;#41;
+  &amp;#40;.on rs &amp;quot;end&amp;quot; #&amp;#40;async/close! ch&amp;#41;&amp;#41;&amp;#41;
+&lt;/code&gt;&lt;/pre&gt;&lt;p&gt;When we get a chunk of data, we pause the stream and only resume it when the data arrives on the channel.&lt;/p&gt;&lt;h2 id=&quot;test&amp;#95;code&quot;&gt;Test code&lt;/h2&gt;&lt;p&gt;The following code uses the &lt;code&gt;/dev/zero&lt;/code&gt; device which produces an endless stream of zeros.  We use one of the functions above to send the contents of such a stream to an unbuffered core.async channel. You can experiment by changing the call to &lt;code&gt;put-stream!&lt;/code&gt; in &lt;code&gt;-main&lt;/code&gt; to &lt;code&gt;put-stream-unsafe!&lt;/code&gt;.&lt;/p&gt;&lt;pre&gt;&lt;code&gt;&amp;#40;ns readable-stream.core
+  &amp;#40;:require-macros &amp;#91;cljs.core.async.macros :refer &amp;#91;go&amp;#93;&amp;#93;&amp;#41;
+  &amp;#40;:require &amp;#91;cljs.nodejs :as nodejs&amp;#93;
+            &amp;#91;cljs.core.async :as async :refer &amp;#91;&amp;lt;!&amp;#93;&amp;#93;&amp;#41;&amp;#41;
+
+&amp;#40;nodejs/enable-util-print!&amp;#41;
+
+&amp;#40;def fs &amp;#40;nodejs/require &amp;quot;fs&amp;quot;&amp;#41;&amp;#41;
+
+&amp;#40;defn put-stream-unsafe! &amp;#91;rs ch&amp;#93;
+  &amp;#40;.on rs &amp;quot;data&amp;quot; #&amp;#40;async/put! ch %&amp;#41;&amp;#41;
+  &amp;#40;.on rs &amp;quot;end&amp;quot; #&amp;#40;async/close! ch&amp;#41;&amp;#41;&amp;#41;
+
+&amp;#40;defn put-stream! &amp;#91;rs ch&amp;#93;
+  &amp;#40;.on rs &amp;quot;data&amp;quot; &amp;#40;fn &amp;#91;data&amp;#93;
+                   &amp;#40;.pause rs&amp;#41;
+                   &amp;#40;async/put! ch data #&amp;#40;.resume rs&amp;#41;&amp;#41;&amp;#41;&amp;#41;
+  &amp;#40;.on rs &amp;quot;end&amp;quot; #&amp;#40;async/close! ch&amp;#41;&amp;#41;&amp;#41;
+
+&amp;#40;defn -main &amp;#91;&amp;amp; args&amp;#93;
+  &amp;#40;let &amp;#91;rs &amp;#40;.createReadStream fs &amp;quot;/dev/zero&amp;quot; #js {:encoding &amp;quot;binary&amp;quot;}&amp;#41;
+        ch &amp;#40;async/chan&amp;#41;&amp;#93;
+    &amp;#40;go
+      &amp;#40;dotimes &amp;#91;&amp;#95; 5&amp;#93;
+        &amp;#40;-&amp;gt; ch &amp;lt;! count println&amp;#41;&amp;#41;&amp;#41;
+    &amp;#40;put-stream! rs ch&amp;#41;&amp;#41;&amp;#41;
+
+&amp;#40;set! &amp;#42;main-cli-fn&amp;#42; -main&amp;#41;
+&lt;/code&gt;&lt;/pre&gt;
+</description>
+<pubDate>
+Fri, 09 Jun 2017 00:00:00 +0200
+</pubDate>
+</item>
 <item>
 <guid>
 https://bentomi.github.com/posts-output/2017-06-04-message-sending-clojure-elixir/
@@ -53,7 +108,7 @@ Message sending with Clojure agents, core.async and Elixir
   end
 end
 &lt;/code&gt;&lt;/pre&gt;&lt;p&gt;The &lt;code&gt;test&lt;/code&gt; function creates &lt;code&gt;m&lt;/code&gt; Erlang processes each running in a loop receiving messages and sending them on to the next process (the last process receiving the message is the main process itself).  Then it asynchronously sends &lt;code&gt;n&lt;/code&gt; messages to the &lt;code&gt;start&lt;/code&gt; process, and finally it waits for all &lt;code&gt;n&lt;/code&gt; messages to arrive back.&lt;/p&gt;&lt;p&gt;The test with 10000 processes sending around 10000 messages can be executed by running the following command:&lt;/p&gt;&lt;pre&gt;&lt;code&gt;elixir --erl &amp;quot;+P 10000&amp;quot; -r chain.exs -e &amp;quot;Chain.run&amp;#40;10000, 10000&amp;#41;&amp;quot;
-&lt;/code&gt;&lt;/pre&gt;&lt;p&gt;On my matching it prints &lt;code&gt;{5877968, :ok}&lt;/code&gt;, meaning that everything went well and the test took about 5.9 seconds.  During this time, all CPU cores had 100% load.&lt;/p&gt;&lt;h2 id=&quot;clojure&amp;#95;agents&amp;#95;solution&quot;&gt;Clojure agents solution&lt;/h2&gt;&lt;pre&gt;&lt;code&gt;&amp;#40;ns chain.agents
+&lt;/code&gt;&lt;/pre&gt;&lt;p&gt;On my machine it prints &lt;code&gt;{5877968, :ok}&lt;/code&gt;, meaning that everything went well and the test took about 5.9 seconds.  During this time, all CPU cores had 100% load.&lt;/p&gt;&lt;h2 id=&quot;clojure&amp;#95;agents&amp;#95;solution&quot;&gt;Clojure agents solution&lt;/h2&gt;&lt;pre&gt;&lt;code&gt;&amp;#40;ns chain.agents
   &amp;#40;:import &amp;#91;java.util.concurrent SynchronousQueue&amp;#93;&amp;#41;&amp;#41;
 
 &amp;#40;defn relay &amp;#91;s m&amp;#93;

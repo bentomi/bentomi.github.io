@@ -81,7 +81,7 @@
   end
 end
 </code></pre><p>The <code>test</code> function creates <code>m</code> Erlang processes each running in a loop receiving messages and sending them on to the next process (the last process receiving the message is the main process itself).  Then it asynchronously sends <code>n</code> messages to the <code>start</code> process, and finally it waits for all <code>n</code> messages to arrive back.</p><p>The test with 10000 processes sending around 10000 messages can be executed by running the following command:</p><pre><code>elixir --erl &quot;+P 10000&quot; -r chain.exs -e &quot;Chain.run&#40;10000, 10000&#41;&quot;
-</code></pre><p>On my matching it prints <code>{5877968, :ok}</code>, meaning that everything went well and the test took about 5.9 seconds.  During this time, all CPU cores had 100% load.</p><h2 id="clojure&#95;agents&#95;solution">Clojure agents solution</h2><pre><code>&#40;ns chain.agents
+</code></pre><p>On my machine it prints <code>{5877968, :ok}</code>, meaning that everything went well and the test took about 5.9 seconds.  During this time, all CPU cores had 100% load.</p><h2 id="clojure&#95;agents&#95;solution">Clojure agents solution</h2><pre><code>&#40;ns chain.agents
   &#40;:import &#91;java.util.concurrent SynchronousQueue&#93;&#41;&#41;
 
 &#40;defn relay &#91;s m&#93;
@@ -199,6 +199,8 @@ end
 
     <div id="prev-next">
         
+        <a href="/posts-output/2017-06-09-readable-stream-to-channel/">&laquo; Sending Node.js readable streams to core.async channels respecting backpressure</a>
+        
         
     </div>
 
@@ -221,6 +223,8 @@ end
                     <h3>Recent Posts</h3>
                     <ul>
                         
+                        <li><a href="/posts-output/2017-06-09-readable-stream-to-channel/">Sending Node.js readable streams to core.async channels respecting backpressure</a></li>
+                        
                         <li><a href="/posts-output/2017-06-04-message-sending-clojure-elixir/">Message sending with Clojure agents, core.async and Elixir</a></li>
                         
                     </ul>
@@ -233,17 +237,27 @@ end
                         
                         <li><a href="/tags-output/clojure/">clojure</a></li>
                         
+                        <li><a href="/tags-output/backpressure/">backpressure</a></li>
+                        
                         <li><a href="/tags-output/process scheduling/">process scheduling</a></li>
                         
                         <li><a href="/tags-output/agents/">agents</a></li>
                         
                         <li><a href="/tags-output/elixir/">elixir</a></li>
                         
+                        <li><a href="/tags-output/readable stream/">readable stream</a></li>
+                        
                         <li><a href="/tags-output/message send/">message send</a></li>
+                        
+                        <li><a href="/tags-output/channel/">channel</a></li>
                         
                         <li><a href="/tags-output/benchmark/">benchmark</a></li>
                         
                         <li><a href="/tags-output/core.async/">core.async</a></li>
+                        
+                        <li><a href="/tags-output/clojurescript/">clojurescript</a></li>
+                        
+                        <li><a href="/tags-output/nodejs/">nodejs</a></li>
                         
                     </ul>
                 </div>
