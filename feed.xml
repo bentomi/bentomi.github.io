@@ -1,28 +1,198 @@
 <?xml version='1.0' encoding='UTF-8'?>
 <rss version='2.0' xmlns:atom='http://www.w3.org/2005/Atom'>
 <channel>
-<atom:link href='https://bentomi.github.com/' rel='self' type='application/rss+xml'/>
+<atom:link href='https://bentomi.github.io/' rel='self' type='application/rss+xml'/>
 <title>
 Bentomi's Notepad
 </title>
 <link>
-https://bentomi.github.com/
+https://bentomi.github.io/
 </link>
 <description>
 Notes made during my experiments
 </description>
 <lastBuildDate>
-Mon, 10 Jul 2017 00:02:55 +0200
+Mon, 09 Aug 2021 08:35:13 +0200
 </lastBuildDate>
 <generator>
 clj-rss
 </generator>
 <item>
 <guid>
-https://bentomi.github.com/posts-output/2017-06-09-readable-stream-to-channel/
+https://bentomi.github.io/posts-output/2021-08-09-binding-conveyance-custom-executor/
 </guid>
 <link>
-https://bentomi.github.com/posts-output/2017-06-09-readable-stream-to-channel/
+https://bentomi.github.io/posts-output/2021-08-09-binding-conveyance-custom-executor/
+</link>
+<title>
+Custom executors and binding conveyance in Clojure
+</title>
+<description>
+&lt;p&gt;Every now and then I run into a situation when I need to execute code in multiple threads in a controlled way. A typical example for such a situation is when I want to test my code for thread safety or performance under various concurrency settings.&lt;/p&gt;&lt;p&gt;The JVM offers a convenient way for doing this: the &lt;a href='https://docs.oracle.com/en/java/javase/15/docs/api/java.base/java/util/concurrent/Executors.html'&gt;&lt;code&gt;java.util.concurrent.Executors&lt;/code&gt;&lt;/a&gt; class provides a number of useful predefined &lt;code&gt;ExecutorService&lt;/code&gt; types with different concurrency properties. However, using them in Clojure properly is not entirely trivial, as in many cases dynamic variable bindings have to be taken into account.&lt;/p&gt;&lt;h1 id=&quot;a&amp;#95;simple&amp;#95;test&amp;#95;case&quot;&gt;A simple test case&lt;/h1&gt;&lt;p&gt;To illustrate the point, let's imagine that we have a function that should work right even when invoked from concurrent threads. As an (admittedly contrived) example, the function &lt;code&gt;sut&lt;/code&gt; below has the task of setting the value in the &lt;code&gt;global&lt;/code&gt; atom to the next higher value divisible by &lt;code&gt;modulus&lt;/code&gt;.&lt;/p&gt;&lt;pre&gt;&lt;code class=&quot;clojure&quot;&gt;&amp;#40;def modulus 97&amp;#41;
+
+&amp;#40;def global &amp;#40;atom 0&amp;#41;&amp;#41;
+
+&amp;#40;defn sut &amp;#91;&amp;#93;
+  &amp;#40;let &amp;#91;c @global&amp;#93;
+    &amp;#40;Thread/sleep &amp;#40;inc &amp;#40;rand-int 20&amp;#41;&amp;#41;&amp;#41;
+    &amp;#40;let &amp;#91;m &amp;#40;mod c modulus&amp;#41;
+          result &amp;#40;if &amp;#40;pos? m&amp;#41;
+                   &amp;#40;swap! global + &amp;#40;- modulus m&amp;#41;&amp;#41;
+                   c&amp;#41;&amp;#93;
+      &amp;#40;when &amp;#40;pos? &amp;#40;mod @global modulus&amp;#41;&amp;#41;
+        &amp;#40;case &amp;#40;rand-int 200&amp;#41;
+          0 &amp;#40;throw &amp;#40;ex-info &amp;quot;error detected&amp;quot; {}&amp;#41;&amp;#41;
+          1 &amp;#40;Thread/sleep 60000&amp;#41;
+          nil&amp;#41;&amp;#41;
+      result&amp;#41;&amp;#41;&amp;#41;
+&lt;/code&gt;&lt;/pre&gt;&lt;p&gt;This function is obviously not thread safe: reading and writing the global variable is not done atomically. Sleeping between reading and writing the global variable makes it very likely that in the presence of concurrent calls the end value will not be divisible by &lt;code&gt;modulus&lt;/code&gt;. The function also simulates some common erroneous behaviour: whenever it sees that adjusting the global value failed, with a small probability it throws an exception or just hangs for a long time.&lt;/p&gt;&lt;p&gt;Ideally, we want our tests to explicitly report all of these problems, when the state gets an invalid value, when the computation fails and when the computation blocks.&lt;/p&gt;&lt;h1 id=&quot;testing&amp;#95;from&amp;#95;a&amp;#95;single&amp;#95;thread&quot;&gt;Testing from a single thread&lt;/h1&gt;&lt;p&gt;We define a fixture that sets &lt;code&gt;global&lt;/code&gt; to a random value between 0 and 9999 before a test is executed. The test itself makes two checks. First, if the result of &lt;code&gt;sut&lt;/code&gt; is divisible with &lt;code&gt;modulus&lt;/code&gt; and second, if the result is a natural integer.&lt;/p&gt;&lt;pre&gt;&lt;code class=&quot;clojure&quot;&gt;&amp;#40;test/use-fixtures :each &amp;#40;fn &amp;#91;f&amp;#93;
+                           &amp;#40;reset! global &amp;#40;rand-int 10000&amp;#41;&amp;#41;
+                           &amp;#40;f&amp;#41;&amp;#41;&amp;#41;
+
+&amp;#40;defn sut-check &amp;#91;&amp;#93;
+  &amp;#40;is &amp;#40;zero? &amp;#40;mod &amp;#40;sut&amp;#41; modulus&amp;#41;&amp;#41;&amp;#41;
+  &amp;#40;is &amp;#40;nat-int? &amp;#40;sut&amp;#41;&amp;#41;&amp;#41;&amp;#41;
+
+&amp;#40;deftest single-thread
+  &amp;#40;sut-check&amp;#41;&amp;#41;
+&lt;/code&gt;&lt;/pre&gt;&lt;p&gt;The test &lt;code&gt;single-thread&lt;/code&gt; always passes.&lt;/p&gt;&lt;h1 id=&quot;multi-threaded&amp;#95;testing&amp;#95;the&amp;#95;naive&amp;#95;way&quot;&gt;Multi-threaded testing the naive way&lt;/h1&gt;&lt;p&gt;The test below calls the same function doing the checks as the single threaded one, but starts multiple concurrent calls.&lt;/p&gt;&lt;pre&gt;&lt;code class=&quot;clojure&quot;&gt;&amp;#40;deftest multi-thread-naive
+  &amp;#40;let &amp;#91;threads 8, tasks &amp;#40;&amp;#42; 2 threads&amp;#41;
+        executor &amp;#40;Executors/newFixedThreadPool threads&amp;#41;&amp;#93;
+    &amp;#40;try
+      &amp;#40;-&amp;gt;&amp;gt; &amp;#40;repeatedly tasks #&amp;#40;.submit executor &amp;#94;Callable sut-check&amp;#41;&amp;#41;
+           doall
+           &amp;#40;map #&amp;#40;try &amp;#40;.get % 1 TimeUnit/SECONDS&amp;#41;
+                      &amp;#40;catch TimeoutException &amp;#95; ::timeout&amp;#41;&amp;#41;&amp;#41;
+           &amp;#40;every? true?&amp;#41;
+           is&amp;#41;
+      &amp;#40;finally
+        &amp;#40;.shutdown executor&amp;#41;&amp;#41;&amp;#41;&amp;#41;&amp;#41;
+&lt;/code&gt;&lt;/pre&gt;&lt;p&gt;It first creates an executor with a pool of 8 threads, then submits 16 tasks to it. &lt;code&gt;repeatedly&lt;/code&gt; delivers a lazy sequence, so the submissions are forced with &lt;code&gt;doall&lt;/code&gt;. This results in a list of futures and we get their values with a &lt;code&gt;map&lt;/code&gt; call. In case we do not get the result within a second, we return &lt;code&gt;::timeout&lt;/code&gt;. (We know that &lt;code&gt;sut-check&lt;/code&gt; cannot deliver this value, so it unambiguously identifies a timeout.) Then we check that the result of each task is &lt;code&gt;true&lt;/code&gt;, which is the value the &lt;code&gt;is&lt;/code&gt; macro delivers when its assertion holds. Finally, we shut down the executor.&lt;/p&gt;&lt;p&gt;The output of running this test depends on the test runner and the environment. Running this test with &lt;code&gt;cognitect.test-runner&lt;/code&gt; in a shell produces an output like this:&lt;/p&gt;&lt;pre&gt;&lt;code class=&quot;shell&quot;&gt;$ clojure -X:run :vars '&amp;#91;com.github.bentomi.demo-test/multi-thread-naive&amp;#93;'
+
+Running tests in #{&amp;quot;test&amp;quot;}
+
+Testing com.github.bentomi.demo-test
+
+FAIL in
+FAIL in  &amp;#40;&amp;#41; &amp;#40;demo&amp;#95;test.clj:49&amp;#41;
+FAIL in
+
+FAIL in
+FAIL in&amp;#40;&amp;#41; &amp;#40;demo&amp;#95;test.clj:49&amp;#41;
+&amp;#40;&amp;#41; &amp;#40;demo&amp;#95;test.clj:49&amp;#41;
+&amp;#40;&amp;#41; &amp;#40;demo&amp;#95;test.clj:49&amp;#41;
+&amp;#40;&amp;#41; &amp;#40;demo&amp;#95;test.clj:49&amp;#41;
+FAIL in
+
+FAIL in &amp;#40;&amp;#41; &amp;#40;demo&amp;#95;test.clj:49&amp;#41;
+ &amp;#40;&amp;#41; &amp;#40;demo&amp;#95;test.clj:49&amp;#41;
+expected: expected:&amp;#40;zero? &amp;#40;mod &amp;#40;sut&amp;#41; modulus&amp;#41;&amp;#41;
+expected: &amp;#40;zero? &amp;#40;mod &amp;#40;sut&amp;#41; modulus&amp;#41;&amp;#41;
+&amp;#40;zero? &amp;#40;mod &amp;#40;sut&amp;#41; modulus&amp;#41;&amp;#41;
+expected: expected:&amp;#40;zero? &amp;#40;mod &amp;#40;sut&amp;#41; modulus&amp;#41;&amp;#41;
+&amp;#40;zero? &amp;#40;mod &amp;#40;sut&amp;#41; modulus&amp;#41;&amp;#41;
+expected:expected:  &amp;#40;zero? &amp;#40;mod &amp;#40;sut&amp;#41; modulus&amp;#41;&amp;#41;&amp;#40;zero? &amp;#40;mod &amp;#40;sut&amp;#41; modulus&amp;#41;&amp;#41;
+
+  actual:  actual:  &amp;#40;not &amp;#40;zero? 1&amp;#41;&amp;#41;
+  actual: &amp;#40;not &amp;#40;zero? 33&amp;#41;&amp;#41;&amp;#40;not &amp;#40;zero? 65&amp;#41;&amp;#41;
+
+  actual: &amp;#40;not &amp;#40;zero? 66&amp;#41;&amp;#41;
+  actual: &amp;#40;not &amp;#40;zero? 2&amp;#41;&amp;#41;
+  actual:  actual:  &amp;#40;not &amp;#40;zero? 34&amp;#41;&amp;#41;&amp;#40;not &amp;#40;zero? 34&amp;#41;&amp;#41;
+
+
+Ran 1 tests containing 1 assertions.
+0 failures, 0 errors.
+&lt;/code&gt;&lt;/pre&gt;&lt;p&gt;We can see some garbled error messages and the report at the end that test passed with one assertion. This is because the assertion in &lt;code&gt;multi-thread-naive&lt;/code&gt; can only detect when &lt;code&gt;sut-check&lt;/code&gt; takes longer than a second or when the second call to &lt;code&gt;is&lt;/code&gt; throws an exception. In the first case the corresponding value is &lt;code&gt;::timeout&lt;/code&gt;, in the second case it's &lt;code&gt;nil&lt;/code&gt;. As the likelihood of these failures is low, the test passes most of the time. In an IDE the output is often hidden, and we can only see that test passes.&lt;/p&gt;&lt;p&gt;The assertions in &lt;code&gt;sut-check&lt;/code&gt; are not taken into account in the report, because their results are collected in a Ref stored in the &lt;code&gt;clojure.test/&amp;#42;report-counters&amp;#42;&lt;/code&gt; dynamic variable which is not seen in the threads making the calls.&lt;/p&gt;&lt;p&gt;Fortunately, Clojure supports binding conveyance, that is, if you make a call using &lt;code&gt;future&lt;/code&gt;, the call will be executed in another thread but it will still see the bindings existing in the current thread.&lt;/p&gt;&lt;h1 id=&quot;multi-threaded&amp;#95;testing&amp;#95;with&amp;#95;binding&amp;#95;conveyance&quot;&gt;Multi-threaded testing with binding conveyance&lt;/h1&gt;&lt;p&gt;The functions &lt;code&gt;future&lt;/code&gt; and &lt;code&gt;future-call&lt;/code&gt; execute their arguments with the same executor that is used with agents when their task is submitted with &lt;code&gt;send-off&lt;/code&gt;. As discussed in &lt;a href='/posts-output/2017-06-04-message-sending-clojure-elixir/'&gt;an earlier post&lt;/a&gt;, the function &lt;code&gt;set-agent-send-off-executor!&lt;/code&gt; can be used to set our custom executor for use by &lt;code&gt;send-off&lt;/code&gt;, &lt;code&gt;future&lt;/code&gt; and &lt;code&gt;future-call&lt;/code&gt;. This means that, as long as the code we are testing is not using any functions relying on this executor, we can override it for the scope of the test. Unfortunately, &lt;code&gt;set-agent-send-off-executor!&lt;/code&gt; returns the executor we set, not the original one, so we have to read &lt;code&gt;clojure.lang.Agent/soloExecutor&lt;/code&gt; explicitly.&lt;/p&gt;&lt;pre&gt;&lt;code class=&quot;clojure&quot;&gt;&amp;#40;deftest multi-thread-conveying
+  &amp;#40;let &amp;#91;threads 8, tasks &amp;#40;&amp;#42; 2 threads&amp;#41;
+        executor &amp;#40;Executors/newFixedThreadPool threads&amp;#41;
+        original-executor clojure.lang.Agent/soloExecutor&amp;#93;
+    &amp;#40;set-agent-send-off-executor! executor&amp;#41;
+    &amp;#40;try
+      &amp;#40;-&amp;gt;&amp;gt;
+       &amp;#40;repeatedly tasks #&amp;#40;future-call sut-check&amp;#41;&amp;#41;
+       doall
+       &amp;#40;map #&amp;#40;deref % 1000 ::timeout&amp;#41;&amp;#41;
+       &amp;#40;every? true?&amp;#41;
+       is&amp;#41;
+      &amp;#40;finally
+        &amp;#40;set-agent-send-off-executor! original-executor&amp;#41;
+        &amp;#40;.shutdown executor&amp;#41;&amp;#41;&amp;#41;&amp;#41;&amp;#41;
+&lt;/code&gt;&lt;/pre&gt;&lt;p&gt;This version of the test differs from the naive version only in that it installs our executor as the agent send off executor for the scope of the test and instead of dealing with Java's Futures, it uses Clojure's &lt;code&gt;deref&lt;/code&gt; to obtain the result values.&lt;/p&gt;&lt;p&gt;Running this test produces an output like this:&lt;/p&gt;&lt;pre&gt;&lt;code class=&quot;shell&quot;&gt;$ clojure -X:run :vars '&amp;#91;com.github.bentomi.demo-test/multi-thread-conveying&amp;#93;'
+
+Running tests in #{&amp;quot;test&amp;quot;}
+
+Testing com.github.bentomi.demo-test
+
+FAIL in &amp;#40;multi-thread-conveying&amp;#41; &amp;#40;demo&amp;#95;test.clj:29&amp;#41;
+
+FAIL in &amp;#40;multi-thread-conveying&amp;#41; &amp;#40;demo&amp;#95;test.clj:29&amp;#41;
+FAIL in
+ &amp;#40;multi-thread-conveying&amp;#41; &amp;#40;demo&amp;#95;test.clj:29&amp;#41;
+expected: &amp;#40;zero? &amp;#40;mod &amp;#40;sut&amp;#41; modulus&amp;#41;&amp;#41;
+expected: &amp;#40;zero? &amp;#40;mod &amp;#40;sut&amp;#41; modulus&amp;#41;&amp;#41;
+expected: &amp;#40;zero? &amp;#40;mod &amp;#40;sut&amp;#41; modulus&amp;#41;&amp;#41;
+
+FAIL in
+FAIL in&amp;#40;multi-thread-conveying&amp;#41; &amp;#40;demo&amp;#95;test.clj:29&amp;#41;
+&amp;#40;multi-thread-conveying&amp;#41; &amp;#40;demo&amp;#95;test.clj:29&amp;#41;
+expected: &amp;#40;zero? &amp;#40;mod &amp;#40;sut&amp;#41; modulus&amp;#41;&amp;#41;
+expected: &amp;#40;zero? &amp;#40;mod &amp;#40;sut&amp;#41; modulus&amp;#41;&amp;#41;
+  actual: &amp;#40;not &amp;#40;zero? 70&amp;#41;&amp;#41;
+  actual:  actual:   actual:&amp;#40;not &amp;#40;zero? 88&amp;#41;&amp;#41;
+  &amp;#40;not &amp;#40;zero? 88&amp;#41;&amp;#41;
+&amp;#40;not &amp;#40;zero? 79&amp;#41;&amp;#41;
+  actual: &amp;#40;not &amp;#40;zero? 79&amp;#41;&amp;#41;
+
+FAIL in &amp;#40;multi-thread-conveying&amp;#41; &amp;#40;demo&amp;#95;test.clj:29&amp;#41;
+expected: &amp;#40;zero? &amp;#40;mod &amp;#40;sut&amp;#41; modulus&amp;#41;&amp;#41;
+  actual: &amp;#40;not &amp;#40;zero? 70&amp;#41;&amp;#41;
+
+FAIL in &amp;#40;multi-thread-conveying&amp;#41; &amp;#40;demo&amp;#95;test.clj:29&amp;#41;
+expected: &amp;#40;zero? &amp;#40;mod &amp;#40;sut&amp;#41; modulus&amp;#41;&amp;#41;
+  actual: &amp;#40;not &amp;#40;zero? 43&amp;#41;&amp;#41;
+
+Ran 1 tests containing 33 assertions.
+7 failures, 0 errors.
+&lt;/code&gt;&lt;/pre&gt;&lt;p&gt;Here we can see that there are 33 assertions not just one and, more importantly, that there are seven failures. Now, even if we cannot see the output of the tests, we can notice that they fail.&lt;/p&gt;&lt;h2 id=&quot;reducing&amp;#95;the&amp;#95;boilerplate&quot;&gt;Reducing the boilerplate&lt;/h2&gt;&lt;p&gt;Since it's awkward and error prone setting up the executor like this, we better extract the ceremony into a macro:&lt;/p&gt;&lt;pre&gt;&lt;code class=&quot;clojure&quot;&gt;&amp;#40;spec/fdef with-send-off-executor
+  :args &amp;#40;spec/cat :binding &amp;#40;spec/spec &amp;#40;spec/cat :name simple-symbol?
+                                                :executor any?&amp;#41;&amp;#41;
+                  :body &amp;#40;spec/+ any?&amp;#41;&amp;#41;&amp;#41;
+
+&amp;#40;defmacro with-send-off-executor
+  &amp;quot;Creates an ExecutorService by calling `executor`, sets it for the scope
+  of the form as executor for `send-off`, `future`, etc. and executes `body`.
+  The executor service created is bound to `name` and shut down after the
+  execution of `body`.&amp;quot;
+  &amp;#91;&amp;#91;name executor&amp;#93; &amp;amp; body&amp;#93;
+  `&amp;#40;let &amp;#91;&amp;#126;name &amp;#126;executor
+         original-executor# clojure.lang.Agent/soloExecutor&amp;#93;
+     &amp;#40;set-agent-send-off-executor! &amp;#126;name&amp;#41;
+     &amp;#40;try
+       &amp;#126;@body
+       &amp;#40;finally
+         &amp;#40;set-agent-send-off-executor! original-executor#&amp;#41;
+         &amp;#40;.shutdown &amp;#126;name&amp;#41;&amp;#41;&amp;#41;&amp;#41;&amp;#41;
+&lt;/code&gt;&lt;/pre&gt;&lt;p&gt;&lt;code&gt;with-send-off-executor&lt;/code&gt; is symmetrical to Clojure's &lt;code&gt;with-open&lt;/code&gt; macro. It allows us to name the executor created and manipulate it in the body of the form. When the execution leaves the form, the executor is shut down.&lt;/p&gt;&lt;p&gt;Using this macro we can write the test such:&lt;/p&gt;&lt;pre&gt;&lt;code class=&quot;clojure&quot;&gt;&amp;#40;deftest multi-thread-conveying
+  &amp;#40;let &amp;#91;threads 8, tasks &amp;#40;&amp;#42; 2 threads&amp;#41;&amp;#93;
+    &amp;#40;with-send-off-executor &amp;#91;&amp;#95;executor &amp;#40;Executors/newFixedThreadPool threads&amp;#41;&amp;#93;
+      &amp;#40;-&amp;gt;&amp;gt; &amp;#40;repeatedly tasks #&amp;#40;future-call sut-check&amp;#41;&amp;#41;
+           doall
+           &amp;#40;map #&amp;#40;deref % 1000 ::timeout&amp;#41;&amp;#41;
+           &amp;#40;every? true?&amp;#41;
+           is&amp;#41;&amp;#41;&amp;#41;&amp;#41;
+&lt;/code&gt;&lt;/pre&gt;&lt;p&gt;Have a look at the &lt;a href='https://github.com/bentomi/conveyance'&gt;source code&lt;/a&gt; if you want to play with it.&lt;/p&gt;
+</description>
+<pubDate>
+Mon, 09 Aug 2021 00:00:00 +0200
+</pubDate>
+</item>
+<item>
+<guid>
+https://bentomi.github.io/posts-output/2017-06-09-readable-stream-to-channel/
+</guid>
+<link>
+https://bentomi.github.io/posts-output/2017-06-09-readable-stream-to-channel/
 </link>
 <title>
 Sending Node.js readable streams to core.async channels respecting backpressure
@@ -74,10 +244,10 @@ Fri, 09 Jun 2017 00:00:00 +0200
 </item>
 <item>
 <guid>
-https://bentomi.github.com/posts-output/2017-06-04-message-sending-clojure-elixir/
+https://bentomi.github.io/posts-output/2017-06-04-message-sending-clojure-elixir/
 </guid>
 <link>
-https://bentomi.github.com/posts-output/2017-06-04-message-sending-clojure-elixir/
+https://bentomi.github.io/posts-output/2017-06-04-message-sending-clojure-elixir/
 </link>
 <title>
 Message sending with Clojure agents, core.async and Elixir
