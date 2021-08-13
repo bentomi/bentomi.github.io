@@ -2,8 +2,8 @@
 <html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en">
 <head>
     <meta charset="utf-8"/>
-    <title>Bentomi&#39;s Notepad: Posts Tagged &quot;message send&quot;</title>
-    <link rel="canonical" href="https://bentomi.github.io/tags-output/message send/">
+    <title>Bentomi&#39;s Notepad: Custom executors and binding conveyance in Clojure, part II</title>
+    <link rel="canonical" href="https://bentomi.github.io/posts-output/2021-08-13-binding-conveyance-custom-executor-part-ii/">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <link href='http://fonts.googleapis.com/css?family=Alegreya:400italic,700italic,400,700' rel='stylesheet'
           type='text/css'>
@@ -46,17 +46,56 @@
         <div class="col-lg-9">
             <div id="content">
                 
-<div id="posts-by-tag">
-    <div id="page-header">
-        <h2>Posts Tagged &quot;message send&quot;</h2>
+<div id="post">
+    <div class="post-header">
+    <div id="post-meta" class="row">
+        <div class="col-lg-6">August 13, 2021</div>
+        
     </div>
-    <ul>
+    <h2>Custom executors and binding conveyance in Clojure, part II</h2>
+</div>
+<div>
     
-        <li>
-            <a href="/posts-output/2017-06-04-message-sending-clojure-elixir/">Message sending with Clojure agents, core.async and Elixir</a>
-        </li>
+    <p>In the <a href='/posts-output/2021-08-09-binding-conveyance-custom-executor/'>previous post</a>, I described how the agents' send-off pool can be overridden to ensure binding conveyance for calls running on a thread different from that of the caller.</p><p>This method has good performance but comes with limitations: it obviously interferes with agents getting tasks with <code>send-off</code> and can cause problems if we want to run tasks in the thread pool that should not see the bindings in the caller's environment. Also, it relies on internal code.</p><h1 id="using&#95;the&#95;public&#95;api">Using the public API</h1><p>If performance is not an issue or the limitations are unacceptable, it is better to use the public <code>bound-fn</code> macro or <code>bound-fn&#42;</code> functions. These return a function that installs the bindings of their caller before executing their arguments and clean them up afterwards. In other words, the bindings are pushed and popped every time the function is executed.</p><p>With a small change (see line number 3 below) we can fix the <code>multi-thread-naive</code> test:</p><pre><code class="clojure">&#40;deftest multi-thread-bound-fn
+  &#40;let &#91;threads 8, tasks &#40;&#42; 2 threads&#41;
+        &#94;Callable sut-check &#40;bound-fn&#42; sut-check&#41;
+        executor &#40;Executors/newFixedThreadPool threads&#41;&#93;
+    &#40;try
+      &#40;-&gt;&gt; &#40;repeatedly tasks #&#40;.submit executor sut-check&#41;&#41;
+           doall
+           &#40;map #&#40;try &#40;.get % 1 TimeUnit/SECONDS&#41;
+                      &#40;catch TimeoutException &#95; ::timeout&#41;&#41;&#41;
+           &#40;every? true?&#41;
+           is&#41;
+      &#40;finally
+        &#40;.shutdown executor&#41;&#41;&#41;&#41;&#41;
+</code></pre><p>The <code>sut-check</code> function is replaced with another function installing the bindings by calling <code>bound-fn&#42;</code>.</p><p>You can have a look at the <a href='https://github.com/bentomi/conveyance'>source code</a> if you want to play with it.</p>
+</div>
+
+<div id="post-tags">
+    <b>Tags: </b>
     
-    </ul>
+    <a href="/tags-output/testing/">testing</a>
+    
+    <a href="/tags-output/clojure/">clojure</a>
+    
+    <a href="/tags-output/binding conveyance/">binding conveyance</a>
+    
+    <a href="/tags-output/executors/">executors</a>
+    
+</div>
+
+
+    <div id="prev-next">
+        
+        
+        <a class="right" href="/posts-output/2021-08-09-binding-conveyance-custom-executor/">Custom executors and binding conveyance in Clojure &raquo;</a>
+        
+    </div>
+
+    
+
+
 </div>
 
             </div>
@@ -130,7 +169,11 @@
 <script src="//maxcdn.bootstrapcdn.com/bootstrap/3.3.0/js/bootstrap.min.js"></script>
 <script src="/js/highlight.pack.js" type="text/javascript"></script>
 <script>hljs.initHighlightingOnLoad();</script>
-
+ <link rel="stylesheet" type="text/css" href=nil>
+<script>
+window.klipse_settings = null;
+</script>
+<script src=nil></script> 
 
 </body>
 </html>

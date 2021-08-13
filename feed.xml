@@ -12,11 +12,41 @@ https://bentomi.github.io/
 Notes made during my experiments
 </description>
 <lastBuildDate>
-Mon, 09 Aug 2021 08:35:13 +0200
+Fri, 13 Aug 2021 13:18:34 +0200
 </lastBuildDate>
 <generator>
 clj-rss
 </generator>
+<item>
+<guid>
+https://bentomi.github.io/posts-output/2021-08-13-binding-conveyance-custom-executor-part-ii/
+</guid>
+<link>
+https://bentomi.github.io/posts-output/2021-08-13-binding-conveyance-custom-executor-part-ii/
+</link>
+<title>
+Custom executors and binding conveyance in Clojure, part II
+</title>
+<description>
+&lt;p&gt;In the &lt;a href='/posts-output/2021-08-09-binding-conveyance-custom-executor/'&gt;previous post&lt;/a&gt;, I described how the agents' send-off pool can be overridden to ensure binding conveyance for calls running on a thread different from that of the caller.&lt;/p&gt;&lt;p&gt;This method has good performance but comes with limitations: it obviously interferes with agents getting tasks with &lt;code&gt;send-off&lt;/code&gt; and can cause problems if we want to run tasks in the thread pool that should not see the bindings in the caller's environment. Also, it relies on internal code.&lt;/p&gt;&lt;h1 id=&quot;using&amp;#95;the&amp;#95;public&amp;#95;api&quot;&gt;Using the public API&lt;/h1&gt;&lt;p&gt;If performance is not an issue or the limitations are unacceptable, it is better to use the public &lt;code&gt;bound-fn&lt;/code&gt; macro or &lt;code&gt;bound-fn&amp;#42;&lt;/code&gt; functions. These return a function that installs the bindings of their caller before executing their arguments and clean them up afterwards. In other words, the bindings are pushed and popped every time the function is executed.&lt;/p&gt;&lt;p&gt;With a small change (see line number 3 below) we can fix the &lt;code&gt;multi-thread-naive&lt;/code&gt; test:&lt;/p&gt;&lt;pre&gt;&lt;code class=&quot;clojure&quot;&gt;&amp;#40;deftest multi-thread-bound-fn
+  &amp;#40;let &amp;#91;threads 8, tasks &amp;#40;&amp;#42; 2 threads&amp;#41;
+        &amp;#94;Callable sut-check &amp;#40;bound-fn&amp;#42; sut-check&amp;#41;
+        executor &amp;#40;Executors/newFixedThreadPool threads&amp;#41;&amp;#93;
+    &amp;#40;try
+      &amp;#40;-&amp;gt;&amp;gt; &amp;#40;repeatedly tasks #&amp;#40;.submit executor sut-check&amp;#41;&amp;#41;
+           doall
+           &amp;#40;map #&amp;#40;try &amp;#40;.get % 1 TimeUnit/SECONDS&amp;#41;
+                      &amp;#40;catch TimeoutException &amp;#95; ::timeout&amp;#41;&amp;#41;&amp;#41;
+           &amp;#40;every? true?&amp;#41;
+           is&amp;#41;
+      &amp;#40;finally
+        &amp;#40;.shutdown executor&amp;#41;&amp;#41;&amp;#41;&amp;#41;&amp;#41;
+&lt;/code&gt;&lt;/pre&gt;&lt;p&gt;The &lt;code&gt;sut-check&lt;/code&gt; function is replaced with another function installing the bindings by calling &lt;code&gt;bound-fn&amp;#42;&lt;/code&gt;.&lt;/p&gt;&lt;p&gt;You can have a look at the &lt;a href='https://github.com/bentomi/conveyance'&gt;source code&lt;/a&gt; if you want to play with it.&lt;/p&gt;
+</description>
+<pubDate>
+Fri, 13 Aug 2021 13:24:00 +0200
+</pubDate>
+</item>
 <item>
 <guid>
 https://bentomi.github.io/posts-output/2021-08-09-binding-conveyance-custom-executor/
