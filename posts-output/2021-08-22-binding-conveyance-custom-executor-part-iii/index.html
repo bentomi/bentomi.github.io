@@ -2,8 +2,8 @@
 <html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en">
 <head>
     <meta charset="utf-8"/>
-    <title>Bentomi&#39;s Notepad: Custom executors and binding conveyance in Clojure, part II</title>
-    <link rel="canonical" href="https://bentomi.github.io/posts-output/2021-08-13-binding-conveyance-custom-executor-part-ii/">
+    <title>Bentomi&#39;s Notepad: Custom executors and binding conveyance in Clojure, part III</title>
+    <link rel="canonical" href="https://bentomi.github.io/posts-output/2021-08-22-binding-conveyance-custom-executor-part-iii/">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <link href='http://fonts.googleapis.com/css?family=Alegreya:400italic,700italic,400,700' rel='stylesheet'
           type='text/css'>
@@ -49,27 +49,54 @@
 <div id="post">
     <div class="post-header">
     <div id="post-meta" class="row">
-        <div class="col-lg-6">August 13, 2021</div>
+        <div class="col-lg-6">August 22, 2021</div>
         
     </div>
-    <h2>Custom executors and binding conveyance in Clojure, part II</h2>
+    <h2>Custom executors and binding conveyance in Clojure, part III</h2>
 </div>
 <div>
     
-    <p>In the <a href='/posts-output/2021-08-09-binding-conveyance-custom-executor/'>previous post</a>, I described how the agents' send-off pool can be overridden to ensure binding conveyance for calls running on a thread different from that of the caller.</p><p>This method has good performance but comes with limitations: it obviously interferes with agents getting tasks with <code>send-off</code> and can cause problems if we want to run tasks in the thread pool that should not see the bindings in the caller's environment. Also, it relies on internal code.</p><h1 id="using&#95;the&#95;public&#95;api">Using the public API</h1><p>If performance is not an issue or the limitations are unacceptable, it is better to use the public <code>bound-fn</code> macro or <code>bound-fn&#42;</code> functions. These return a function that installs the bindings of their caller before executing their arguments and clean them up afterwards. In other words, the bindings are pushed and popped every time the function is executed.</p><p>With a small change (see line number 3 below) we can fix the <code>multi-thread-naive</code> test:</p><pre><code class="clojure">&#40;deftest multi-thread-bound-fn
-  &#40;let &#91;threads 8, tasks &#40;&#42; 2 threads&#41;
-        &#94;Callable sut-check &#40;bound-fn&#42; sut-check&#41;
-        executor &#40;Executors/newFixedThreadPool threads&#41;&#93;
-    &#40;try
-      &#40;-&gt;&gt; &#40;repeatedly tasks #&#40;.submit executor sut-check&#41;&#41;
+    <p>In the <a href='/posts-output/2021-08-13-binding-conveyance-custom-executor-part-ii/'>previous post</a>, I described how to set up dynamic variable bindings for arbitrary executors. I also pointed out that this method has a slight performance penalty: the bindings are set up and torn down before and after each submitted task, although we need this only once for each thread in the pool.</p><p>In this part I show a way to get rid of this performance penalty whenever using an executor accepting a thread factory. The following examples assume the environment described in the <a href='/posts-output/2021-08-09-binding-conveyance-custom-executor/'>first part</a> of this series.</p><h1 id="a&#95;thread&#95;factory&#95;with&#95;dynamic&#95;binding">A thread factory with dynamic binding</h1><p>The first step is to define a function a thread factory creating threads with the desired bindings already installed. The function below takes two optional parameters, a thread factory producing the threads we want to modify and the bindings to be installed. Both of these have straightforward default values: the default thread factory from <code>java.util.concurrent.Executors</code> and the current thread bindings.</p><pre><code class="clojure">&#40;defn binding-thread-factory
+  &quot;Returns a thread factory wrapping `base-factory` that creates threads having
+  `bindings` installed.&quot;
+  &#91;&amp; {:keys &#91;base-factory bindings&#93;
+      :or {base-factory &#40;Executors/defaultThreadFactory&#41;
+           bindings &#40;get-thread-bindings&#41;}}&#93;
+  &#40;reify ThreadFactory
+    &#40;newThread &#91;&#95;this runnable&#93;
+      &#40;.newThread base-factory #&#40;with-bindings bindings &#40;.run runnable&#41;&#41;&#41;&#41;&#41;&#41;
+</code></pre><p>In the last line of this code the <code>with-bindings</code> macro is used to set the desired bindings for the runnable of the new thread.</p><p>This function can be used as shown below for creating a fixed thread pool executor.</p><pre><code class="clojure">&#40;defn &#94;ExecutorService binding-fixed-thread-pool
+  &quot;Returns a fixed thread pool with `threads` number of threads using a binding
+  thread pool created according to `factory-opts`.
+  Also see: `binding-thread-factory`.&quot;
+  &#91;threads &amp; factory-opts&#93;
+  &#40;let &#91;thread-factory &#40;apply binding-thread-factory factory-opts&#41;&#93;
+    &#40;Executors/newFixedThreadPool threads thread-factory&#41;&#41;&#41;
+</code></pre><h1 id="using&#95;the&#95;executor&#95;in&#95;tests">Using the executor in tests</h1><p>Like before, it makes sense to define a macro for creating and shutting down the executor:</p><pre><code class="clojure">&#40;spec/fdef with-executor
+  :args &#40;spec/cat :binding &#40;spec/spec &#40;spec/cat :name simple-symbol?
+                                                :executor any?&#41;&#41;
+                  :body &#40;spec/+ any?&#41;&#41;&#41;
+
+&#40;defmacro with-executor
+  &quot;Creates an ExecutorService by calling `executor` and executes `body`.
+  The executor service created is bound to `name` and shut down after the
+  execution of `body`.&quot;
+  &#91;&#91;name executor&#93; &amp; body&#93;
+  `&#40;let &#91;&#126;name &#126;executor&#93;
+     &#40;try
+       &#126;@body
+       &#40;finally
+         &#40;.shutdown &#126;name&#41;&#41;&#41;&#41;&#41;
+</code></pre><p>With this macro a multi-threaded test can be defined such:</p><pre><code class="clojure">&#40;deftest multi-thread-bind-once
+  &#40;let &#91;threads 8, tasks &#40;&#42; 2 threads&#41;&#93;
+    &#40;with-executor &#91;executor &#40;binding-fixed-thread-pool threads&#41;&#93;
+      &#40;-&gt;&gt; &#40;repeatedly tasks #&#40;.submit executor &#94;Callable sut-check&#41;&#41;
            doall
            &#40;map #&#40;try &#40;.get % 1 TimeUnit/SECONDS&#41;
                       &#40;catch TimeoutException &#95; ::timeout&#41;&#41;&#41;
            &#40;every? true?&#41;
-           is&#41;
-      &#40;finally
-        &#40;.shutdown executor&#41;&#41;&#41;&#41;&#41;
-</code></pre><p>The <code>sut-check</code> function is replaced with another function installing the bindings by calling <code>bound-fn&#42;</code>.</p><p>You can have a look at the <a href='https://github.com/bentomi/conveyance'>source code</a> if you want to play with it.</p>
+           is&#41;&#41;&#41;&#41;
+</code></pre><p>See the <a href='https://github.com/bentomi/conveyance'>source code</a> if you want to play with it.</p>
 </div>
 
 <div id="post-tags">
@@ -88,10 +115,8 @@
 
     <div id="prev-next">
         
-        <a href="/posts-output/2021-08-22-binding-conveyance-custom-executor-part-iii/">&laquo; Custom executors and binding conveyance in Clojure, part III</a>
         
-        
-        <a class="right" href="/posts-output/2021-08-09-binding-conveyance-custom-executor/">Custom executors and binding conveyance in Clojure &raquo;</a>
+        <a class="right" href="/posts-output/2021-08-13-binding-conveyance-custom-executor-part-ii/">Custom executors and binding conveyance in Clojure, part II &raquo;</a>
         
     </div>
 
