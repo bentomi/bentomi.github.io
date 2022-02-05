@@ -12,11 +12,41 @@ https://bentomi.github.io/
 Notes made during my experiments
 </description>
 <lastBuildDate>
-Sun, 22 Aug 2021 13:02:57 +0200
+Sun, 06 Feb 2022 00:38:19 +0300
 </lastBuildDate>
 <generator>
 clj-rss
 </generator>
+<item>
+<guid>
+https://bentomi.github.io/posts-output/2022-02-06-re-colouring-svg-icons/
+</guid>
+<link>
+https://bentomi.github.io/posts-output/2022-02-06-re-colouring-svg-icons/
+</link>
+<title>
+Re-colouring SVG icons
+</title>
+<description>
+&lt;p&gt;Sometimes you have an icon drawn in SVG but you want to display it in different colours depending on the state, for example when a given menu item is selected or when you want to warn the user about something.&lt;/p&gt;&lt;p&gt;Most SVG icons are draw on a transparent background. The foreground colour in such icons can be easily converted using SVG filter &lt;a href='https://developer.mozilla.org/en-US/docs/Web/SVG/Element/feColorMatrix'&gt;&lt;code&gt;feColorMatrix&lt;/code&gt;&lt;/a&gt;. All we have to do is creating a matrix where the original colours are zeroed out and the constant component is taken from the new colour. The transparency channel is left unmodified, so that we draw only there where the original icon has something drawn. The matrix should look like this:&lt;/p&gt;&lt;pre&gt;&lt;code class=&quot;svg&quot;&gt;0 0 0 0 r
+0 0 0 0 g
+0 0 0 0 b
+0 0 0 1 0
+&lt;/code&gt;&lt;/pre&gt;&lt;p&gt;If you try putting the RGB values in the matrix, you will get a completely white icon in most cases. This is because SVG uses the sRGB colour space where the R, G, B channels get a value between 0 and 1. If you now try setting the R, G, B values by dividing the target values by 255.0, you will get more colours but they will be strangely off from the target. It turns out that the transformation to sRGB is non-linear: the correct formula is &lt;code&gt;pow&amp;#40;x / 255.0, 2.2&amp;#41;&lt;/code&gt;.&lt;/p&gt;&lt;p&gt;Now all that remains is adding the transformation filter to the HTML page and setting it for the icon. This can be done like this:&lt;/p&gt;&lt;pre&gt;&lt;code class=&quot;html&quot;&gt;&amp;lt;svg height=&amp;quot;0&amp;quot; width=&amp;quot;0&amp;quot;&amp;gt;
+  &amp;lt;filter id=&amp;quot;filter&amp;quot;&amp;gt;
+    &amp;lt;feColorMatrix in=&amp;quot;SourceGraphic&amp;quot; type=&amp;quot;matrix&amp;quot;
+                   values=&amp;quot;0 0 0 0 0.05 0 0 0 0 0.35 0 0 0 0 0.84 0 0 0 1 0&amp;quot;/&amp;gt;
+  &amp;lt;/filter&amp;gt;
+&amp;lt;/svg&amp;gt;
+&amp;lt;span style=&amp;quot;filter:url&amp;#40;#filter&amp;#41;&amp;quot;&amp;gt;
+  &amp;lt;img src=&amp;quot;icon.svg&amp;quot;/&amp;gt;
+&amp;lt;/span&amp;gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;p&gt;The &lt;a href='https://github.com/bentomi/colour-change'&gt;example&lt;/a&gt; shows the whole setup with the colour matrix set dynamically.&lt;/p&gt;
+</description>
+<pubDate>
+Sun, 06 Feb 2022 00:00:00 +0300
+</pubDate>
+</item>
 <item>
 <guid>
 https://bentomi.github.io/posts-output/2021-08-22-binding-conveyance-custom-executor-part-iii/
@@ -71,7 +101,7 @@ Custom executors and binding conveyance in Clojure, part III
 &lt;/code&gt;&lt;/pre&gt;&lt;p&gt;See the &lt;a href='https://github.com/bentomi/conveyance'&gt;source code&lt;/a&gt; if you want to play with it.&lt;/p&gt;
 </description>
 <pubDate>
-Sun, 22 Aug 2021 13:10:57 +0200
+Sun, 22 Aug 2021 00:00:00 +0300
 </pubDate>
 </item>
 <item>
@@ -101,7 +131,7 @@ Custom executors and binding conveyance in Clojure, part II
 &lt;/code&gt;&lt;/pre&gt;&lt;p&gt;The &lt;code&gt;sut-check&lt;/code&gt; function is replaced with another function installing the bindings by calling &lt;code&gt;bound-fn&amp;#42;&lt;/code&gt;.&lt;/p&gt;&lt;p&gt;You can have a look at the &lt;a href='https://github.com/bentomi/conveyance'&gt;source code&lt;/a&gt; if you want to play with it.&lt;/p&gt;
 </description>
 <pubDate>
-Fri, 13 Aug 2021 00:00:00 +0200
+Fri, 13 Aug 2021 00:00:00 +0300
 </pubDate>
 </item>
 <item>
@@ -271,7 +301,7 @@ Ran 1 tests containing 33 assertions.
 &lt;/code&gt;&lt;/pre&gt;&lt;p&gt;Have a look at the &lt;a href='https://github.com/bentomi/conveyance'&gt;source code&lt;/a&gt; if you want to play with it.&lt;/p&gt;
 </description>
 <pubDate>
-Mon, 09 Aug 2021 00:00:00 +0200
+Mon, 09 Aug 2021 00:00:00 +0300
 </pubDate>
 </item>
 <item>
@@ -326,7 +356,7 @@ Sending Node.js readable streams to core.async channels respecting backpressure
 &lt;/code&gt;&lt;/pre&gt;
 </description>
 <pubDate>
-Fri, 09 Jun 2017 00:00:00 +0200
+Fri, 09 Jun 2017 00:00:00 +0300
 </pubDate>
 </item>
 <item>
@@ -461,7 +491,7 @@ end
 &lt;/code&gt;&lt;/pre&gt;&lt;p&gt;This change more than doubles the runtime of the Elixir version: &lt;code&gt;{16641097, :ok}&lt;/code&gt;, while the runtime of the Clojure versions remains roughly unchanged: &lt;code&gt;&amp;quot;Elapsed time: 9755.010961 msecs&amp;quot;&lt;/code&gt;. This is because Erlang processes share nothing, and the message is copied each time it is sent.  In Clojure there is a global heap, so only a reference to the list has to be sent around.  Why does the Erlang virtual machine do this copying?  After all, Erlang lists are immutable so sharing them should not be dangerous.  The reason is that not sharing data enables the Erlang VM to maintain separate heaps for the individual processes which means these heaps stay small and can be garbage collected separately.  This in turn results in much shorter and more predictable GC related latencies.&lt;/p&gt;&lt;h2 id=&quot;conclusion&quot;&gt;Conclusion&lt;/h2&gt;&lt;p&gt;I compared asynchronous message passing performance of Elixir and Clojure, in Clojure I looked at both agents and core.async.  I discussed issues related to scheduling, buffering and garbage collection.  The following points seem to be the most important takeaways:&lt;/p&gt;&lt;ol&gt;&lt;li&gt;The Erlang process scheduler and message passing system is an   impressive piece of work, and offers excellent out of the box   experience.&lt;/li&gt;&lt;li&gt;In Clojure, agents are not the way to go if message passing   performance is vital.&lt;/li&gt;&lt;li&gt;Clojure's core.async library offers similar message passing   performance as Erlang, especially if the messages are bigger than   just a couple of small numbers and buffering can be tweaked.&lt;/li&gt;&lt;li&gt;Erlang's GC probably causes smaller latencies than the default JVM   garbage collector.&lt;/li&gt;&lt;/ol&gt;&lt;p&gt;Feel free to experiment with the &lt;a href='https://github.com/bentomi/message-passing-test'&gt;code&lt;/a&gt; yourself.&lt;/p&gt;
 </description>
 <pubDate>
-Sun, 04 Jun 2017 00:00:00 +0200
+Sun, 04 Jun 2017 00:00:00 +0300
 </pubDate>
 </item>
 </channel>
